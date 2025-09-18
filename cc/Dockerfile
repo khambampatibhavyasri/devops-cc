@@ -12,9 +12,6 @@ RUN npm install
 # Copy the rest of the application code
 COPY . .
 
-# Set environment variable for React development server
-ENV PORT=3000
-
 # Expose port 3000
 EXPOSE 3000
 

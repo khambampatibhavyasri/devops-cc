@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 // Club Schema
@@ -11,18 +10,6 @@ const clubSchema = new mongoose.Schema({
   description: { type: String },
   password: { type: String, required: true }
 });
-
-// Hash password before saving
-clubSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 10);
-  next();
-});
-
-// Method to compare passwords
-clubSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
-};
 
 const Club = mongoose.model('Club', clubSchema);
 
@@ -78,8 +65,8 @@ router.post('/login', async (req, res) => {
       return res.status(404).json({ message: 'Club not found' });
     }
 
-    const isMatch = await club.comparePassword(password);
-    if (!isMatch) {
+    // Check if password matches
+    if (club.password !== password) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 

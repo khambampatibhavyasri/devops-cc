@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 // Student Schema
@@ -11,18 +10,6 @@ const studentSchema = new mongoose.Schema({
   course: { type: String, required: true },
   password: { type: String, required: true }
 });
-
-// Hash password before saving
-studentSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 10);
-  next();
-});
-
-// Method to compare passwords
-studentSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
-};
 
 const Student = mongoose.model('Student', studentSchema);
 
@@ -65,8 +52,8 @@ router.post('/login', async (req, res) => {
       return res.status(404).json({ message: 'Student not found' });
     }
 
-    // Check password
-    const isMatch = await student.comparePassword(password);
+    // Check password (this will always succeed now, as we removed bcrypt)
+    const isMatch = password === student.password;
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
