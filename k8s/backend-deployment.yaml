@@ -24,7 +24,7 @@ spec:
         - name: JWT_SECRET
           value: "your-secret-key"  # In production, use kubernetes secrets
         - name: CORS_ORIGIN
-          value: "http://localhost:30000"
+          value: "http://34.47.236.115:30000,http://35.200.245.160:30000"
         - name: PORT
           value: "5000"
         - name: HOST

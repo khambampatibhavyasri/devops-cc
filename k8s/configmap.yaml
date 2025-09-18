@@ -3,4 +3,4 @@ kind: ConfigMap
 metadata:
   name: frontend-config
 data:
-  REACT_APP_API_URL: "http://localhost:30001/api"
+  REACT_APP_API_URL: "http://34.47.236.115:30001/api"
