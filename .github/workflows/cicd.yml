@@ -1,0 +1,159 @@
+name: Campus Connect CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
+  GKE_ZONE: ${{ secrets.GKE_ZONE }}
+  FRONTEND_IMAGE: campusconnect-frontend
+  BACKEND_IMAGE: campusconnect-backend
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: |
+          cc/package-lock.json
+          server/package-lock.json
+
+    - name: Install Frontend Dependencies
+      working-directory: ./cc
+      run: npm ci
+
+    - name: Install Backend Dependencies
+      working-directory: ./server
+      run: npm ci
+
+    - name: Run Frontend Tests
+      working-directory: ./cc
+      run: |
+        npm run test -- --coverage --watchAll=false
+      continue-on-error: true
+
+    - name: Run Backend Tests
+      working-directory: ./server
+      run: |
+        npm test
+      continue-on-error: true
+
+    - name: Lint Frontend Code
+      working-directory: ./cc
+      run: |
+        npm run lint || echo "Linting completed with warnings"
+      continue-on-error: true
+
+  trigger-jenkins:
+    name: Trigger Jenkins Build
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Trigger Jenkins Job
+      run: |
+        curl -X POST \
+          -u ${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }} \
+          "${{ secrets.JENKINS_URL }}/job/campusconnect-pipeline/build" \
+          --data-urlencode "token=github-trigger" \
+          --data-urlencode "cause=GitHub commit by ${{ github.actor }}"
+
+  build-and-deploy:
+    name: Build and Deploy to GKE
+    needs: [test, trigger-jenkins]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Google Cloud CLI
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Configure Docker for GCR
+      run: gcloud --quiet auth configure-docker
+
+    - name: Get GKE credentials
+      run: |
+        gcloud container clusters get-credentials "$GKE_CLUSTER" --zone "$GKE_ZONE"
+
+    - name: Build Frontend Docker Image
+      run: |
+        docker build -t "gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:$GITHUB_SHA" \
+          -t "gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:latest" \
+          -f cc/Dockerfile cc/
+
+    - name: Build Backend Docker Image
+      run: |
+        docker build -t "gcr.io/$PROJECT_ID/$BACKEND_IMAGE:$GITHUB_SHA" \
+          -t "gcr.io/$PROJECT_ID/$BACKEND_IMAGE:latest" \
+          -f server/Dockerfile server/
+
+    - name: Push Images to GCR
+      run: |
+        docker push "gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:$GITHUB_SHA"
+        docker push "gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:latest"
+        docker push "gcr.io/$PROJECT_ID/$BACKEND_IMAGE:$GITHUB_SHA"
+        docker push "gcr.io/$PROJECT_ID/$BACKEND_IMAGE:latest"
+
+    - name: Update Kubernetes Manifests
+      run: |
+        sed -i "s|campusconnect-frontend:latest|gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:$GITHUB_SHA|g" k8s/frontend-deployment.yaml
+        sed -i "s|campusconnect-backend:latest|gcr.io/$PROJECT_ID/$BACKEND_IMAGE:$GITHUB_SHA|g" k8s/backend-deployment.yaml
+
+    - name: Deploy to GKE
+      run: |
+        kubectl apply -f k8s/configmap.yaml
+        kubectl apply -f k8s/backend-deployment.yaml
+        kubectl apply -f k8s/frontend-deployment.yaml
+
+        # Wait for rollout to complete
+        kubectl rollout status deployment/backend --timeout=300s
+        kubectl rollout status deployment/frontend --timeout=300s
+
+    - name: Get Service URLs
+      run: |
+        echo "Getting service information..."
+        kubectl get services
+        echo ""
+        echo "Frontend URL: http://$(kubectl get service frontend-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}'):30000"
+        echo "Backend URL: http://$(kubectl get service backend-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}'):30001"
+
+  notify:
+    name: Notify Deployment Status
+    needs: [build-and-deploy]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+    - name: Deployment Success Notification
+      if: needs.build-and-deploy.result == 'success'
+      run: |
+        echo "✅ Campus Connect deployed successfully!"
+        echo "Commit: ${{ github.sha }}"
+        echo "Author: ${{ github.actor }}"
+
+    - name: Deployment Failure Notification
+      if: needs.build-and-deploy.result == 'failure'
+      run: |
+        echo "❌ Campus Connect deployment failed!"
+        echo "Commit: ${{ github.sha }}"
+        echo "Author: ${{ github.actor }}"

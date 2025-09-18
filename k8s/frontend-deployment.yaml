@@ -14,8 +14,8 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: campusconnect-frontend:latest
-        imagePullPolicy: Never
+        image: gcr.io/devops-cc-472518/campusconnect-frontend:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 3000
         env:
