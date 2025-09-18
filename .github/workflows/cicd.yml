@@ -10,6 +10,8 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
   GKE_ZONE: ${{ secrets.GKE_ZONE }}
+  GAR_LOCATION: asia-south1
+  REPOSITORY: campusconnect-repo
   FRONTEND_IMAGE: campusconnect-frontend
   BACKEND_IMAGE: campusconnect-backend
 
@@ -90,8 +92,8 @@ jobs:
     - name: Setup Google Cloud CLI
       uses: google-github-actions/setup-gcloud@v2
 
-    - name: Configure Docker for GCR
-      run: gcloud --quiet auth configure-docker
+    - name: Configure Docker for Artifact Registry
+      run: gcloud --quiet auth configure-docker $GAR_LOCATION-docker.pkg.dev
 
     - name: Get GKE credentials
       run: |
@@ -99,27 +101,27 @@ jobs:
 
     - name: Build Frontend Docker Image
       run: |
-        docker build -t "gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:$GITHUB_SHA" \
-          -t "gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:latest" \
+        docker build -t "$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$FRONTEND_IMAGE:$GITHUB_SHA" \
+          -t "$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$FRONTEND_IMAGE:latest" \
           -f cc/Dockerfile cc/
 
     - name: Build Backend Docker Image
       run: |
-        docker build -t "gcr.io/$PROJECT_ID/$BACKEND_IMAGE:$GITHUB_SHA" \
-          -t "gcr.io/$PROJECT_ID/$BACKEND_IMAGE:latest" \
+        docker build -t "$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$BACKEND_IMAGE:$GITHUB_SHA" \
+          -t "$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$BACKEND_IMAGE:latest" \
           -f server/Dockerfile server/
 
-    - name: Push Images to GCR
+    - name: Push Images to Artifact Registry
       run: |
-        docker push "gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:$GITHUB_SHA"
-        docker push "gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:latest"
-        docker push "gcr.io/$PROJECT_ID/$BACKEND_IMAGE:$GITHUB_SHA"
-        docker push "gcr.io/$PROJECT_ID/$BACKEND_IMAGE:latest"
+        docker push "$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$FRONTEND_IMAGE:$GITHUB_SHA"
+        docker push "$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$FRONTEND_IMAGE:latest"
+        docker push "$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$BACKEND_IMAGE:$GITHUB_SHA"
+        docker push "$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$BACKEND_IMAGE:latest"
 
     - name: Update Kubernetes Manifests
       run: |
-        sed -i "s|campusconnect-frontend:latest|gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:$GITHUB_SHA|g" k8s/frontend-deployment.yaml
-        sed -i "s|campusconnect-backend:latest|gcr.io/$PROJECT_ID/$BACKEND_IMAGE:$GITHUB_SHA|g" k8s/backend-deployment.yaml
+        sed -i "s|campusconnect-frontend:latest|$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$FRONTEND_IMAGE:$GITHUB_SHA|g" k8s/frontend-deployment.yaml
+        sed -i "s|campusconnect-backend:latest|$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$BACKEND_IMAGE:$GITHUB_SHA|g" k8s/backend-deployment.yaml
 
     - name: Deploy to GKE
       run: |
