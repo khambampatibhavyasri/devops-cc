@@ -82,49 +82,117 @@ jobs:
           exit 1
         fi
 
-        # Try to trigger Jenkins job with proper error handling
-        echo "🚀 Triggering Jenkins job at ${{ secrets.JENKINS_URL }}"
+        echo "🔍 Diagnosing Jenkins connectivity..."
+        echo "Jenkins URL: ${{ secrets.JENKINS_URL }}"
+        echo "Jenkins User: ${{ secrets.JENKINS_USER }}"
 
-        # Get CSRF crumb for authentication
-        echo "🔐 Getting CSRF crumb..."
-        CRUMB=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
-          "${{ secrets.JENKINS_URL }}/crumbIssuer/api/json" | \
-          python3 -c "import sys, json; print(json.load(sys.stdin)['crumb'])" 2>/dev/null || echo "")
-
-        # Set common curl options
-        CURL_OPTS="-u ${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }} --fail --show-error"
-
-        if [ -n "$CRUMB" ]; then
-          echo "✅ CSRF crumb obtained, triggering job with authentication..."
-          RESPONSE=$(curl -X POST $CURL_OPTS \
-            -H "Jenkins-Crumb: $CRUMB" \
-            "${{ secrets.JENKINS_URL }}/job/campusconnect-pipeline/build" \
-            --data-urlencode "token=github-trigger" \
-            --data-urlencode "cause=GitHub commit by ${{ github.actor }}" \
-            -w "%{http_code}" -o /tmp/jenkins_response.txt)
-
-          if [ "$RESPONSE" = "201" ] || [ "$RESPONSE" = "200" ]; then
-            echo "✅ Jenkins job triggered successfully! (HTTP $RESPONSE)"
-          else
-            echo "❌ Jenkins trigger failed with HTTP code: $RESPONSE"
-            cat /tmp/jenkins_response.txt
-            exit 1
-          fi
+        # Test basic connectivity
+        echo "🌐 Testing Jenkins connectivity..."
+        if curl -s --connect-timeout 10 "${{ secrets.JENKINS_URL }}" > /dev/null; then
+          echo "✅ Jenkins server is reachable"
         else
-          echo "⚠️  No CSRF crumb available, trying direct authentication..."
-          RESPONSE=$(curl -X POST $CURL_OPTS \
+          echo "❌ Cannot reach Jenkins server"
+          exit 1
+        fi
+
+        # Test authentication
+        echo "🔐 Testing Jenkins authentication..."
+        AUTH_TEST=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+          "${{ secrets.JENKINS_URL }}/api/json" -w "%{http_code}" -o /tmp/auth_test.txt)
+
+        if [ "$AUTH_TEST" = "200" ]; then
+          echo "✅ Jenkins authentication successful"
+        else
+          echo "❌ Jenkins authentication failed (HTTP $AUTH_TEST)"
+          echo "Response:"
+          cat /tmp/auth_test.txt || echo "No response body"
+          echo ""
+          echo "💡 Troubleshooting steps:"
+          echo "1. Verify JENKINS_USER is correct"
+          echo "2. Verify JENKINS_TOKEN is an API token (not password)"
+          echo "3. Check if user has proper permissions"
+          echo "4. Ensure Jenkins security realm allows API access"
+          exit 1
+        fi
+
+        # Check if job exists
+        echo "🎯 Checking if job 'campusconnect-pipeline' exists..."
+        JOB_CHECK=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+          "${{ secrets.JENKINS_URL }}/job/campusconnect-pipeline/api/json" -w "%{http_code}" -o /tmp/job_check.txt)
+
+        if [ "$JOB_CHECK" = "200" ]; then
+          echo "✅ Job 'campusconnect-pipeline' exists"
+        else
+          echo "❌ Job 'campusconnect-pipeline' not found (HTTP $JOB_CHECK)"
+          echo "Available jobs:"
+          curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+            "${{ secrets.JENKINS_URL }}/api/json" | \
+            python3 -c "import sys, json; jobs = json.load(sys.stdin).get('jobs', []); [print(f\"  - {job['name']}\") for job in jobs]" 2>/dev/null || echo "  Could not list jobs"
+          exit 1
+        fi
+
+        # Get CSRF crumb if needed
+        echo "🔐 Getting CSRF crumb..."
+        CRUMB_RESPONSE=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+          "${{ secrets.JENKINS_URL }}/crumbIssuer/api/json" -w "%{http_code}")
+        CRUMB_CODE=$(echo "$CRUMB_RESPONSE" | tail -c 4)
+
+        if [ "$CRUMB_CODE" = "200" ]; then
+          CRUMB=$(echo "$CRUMB_RESPONSE" | head -c -4 | python3 -c "import sys, json; print(json.load(sys.stdin)['crumb'])" 2>/dev/null)
+          CRUMB_FIELD=$(echo "$CRUMB_RESPONSE" | head -c -4 | python3 -c "import sys, json; print(json.load(sys.stdin)['crumbRequestField'])" 2>/dev/null)
+          echo "✅ CSRF protection enabled, crumb obtained"
+        else
+          echo "⚠️  No CSRF protection or crumb unavailable"
+          CRUMB=""
+          CRUMB_FIELD=""
+        fi
+
+        # Trigger the build
+        echo "🚀 Triggering Jenkins build..."
+
+        if [ -n "$CRUMB" ] && [ -n "$CRUMB_FIELD" ]; then
+          # Use CSRF crumb
+          BUILD_RESPONSE=$(curl -X POST \
+            -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+            -H "$CRUMB_FIELD: $CRUMB" \
             "${{ secrets.JENKINS_URL }}/job/campusconnect-pipeline/build" \
             --data-urlencode "token=github-trigger" \
             --data-urlencode "cause=GitHub commit by ${{ github.actor }}" \
-            -w "%{http_code}" -o /tmp/jenkins_response.txt)
+            -w "%{http_code}" -o /tmp/build_response.txt -s)
+        else
+          # Direct trigger without CSRF
+          BUILD_RESPONSE=$(curl -X POST \
+            -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+            "${{ secrets.JENKINS_URL }}/job/campusconnect-pipeline/build" \
+            --data-urlencode "token=github-trigger" \
+            --data-urlencode "cause=GitHub commit by ${{ github.actor }}" \
+            -w "%{http_code}" -o /tmp/build_response.txt -s)
+        fi
 
-          if [ "$RESPONSE" = "201" ] || [ "$RESPONSE" = "200" ]; then
-            echo "✅ Jenkins job triggered successfully! (HTTP $RESPONSE)"
-          else
-            echo "❌ Jenkins trigger failed with HTTP code: $RESPONSE"
-            cat /tmp/jenkins_response.txt
-            exit 1
+        # Check build trigger result
+        if [ "$BUILD_RESPONSE" = "201" ] || [ "$BUILD_RESPONSE" = "200" ]; then
+          echo "✅ Jenkins build triggered successfully! (HTTP $BUILD_RESPONSE)"
+        else
+          echo "❌ Jenkins build trigger failed (HTTP $BUILD_RESPONSE)"
+          echo "Response:"
+          cat /tmp/build_response.txt || echo "No response body"
+
+          if [ "$BUILD_RESPONSE" = "401" ]; then
+            echo ""
+            echo "🔧 Jenkins 401 Unauthorized Solutions:"
+            echo "1. Create API Token: Jenkins → User → Configure → API Token"
+            echo "2. Enable remote triggers: Job Config → Build Triggers → Trigger builds remotely"
+            echo "3. Set authentication token: Use 'github-trigger' as token"
+            echo "4. Check user permissions: Ensure user can trigger builds"
+          elif [ "$BUILD_RESPONSE" = "403" ]; then
+            echo ""
+            echo "🔧 Jenkins 403 Forbidden Solutions:"
+            echo "1. Check job permissions: User needs build permission"
+            echo "2. Verify CSRF settings match"
+            echo "3. Check Jenkins security configuration"
           fi
+
+          exit 1
         fi
 
   build-and-deploy:
