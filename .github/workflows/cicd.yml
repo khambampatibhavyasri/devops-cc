@@ -35,9 +35,7 @@ jobs:
 
     - name: Install Frontend Dependencies
       working-directory: ./cc
-      run: |
-        npm ci
-        npm list react-router-dom || npm install react-router-dom
+      run: npm ci
 
     - name: Install Backend Dependencies
       working-directory: ./server
@@ -46,7 +44,7 @@ jobs:
     - name: Run Frontend Tests
       working-directory: ./cc
       run: |
-        npm run test -- --coverage --watchAll=false --passWithNoTests
+        npm run test -- --coverage --watchAll=false
       continue-on-error: true
 
     - name: Run Backend Tests
@@ -58,11 +56,7 @@ jobs:
     - name: Lint Frontend Code
       working-directory: ./cc
       run: |
-        if npm run lint > /dev/null 2>&1; then
-          npm run lint
-        else
-          echo "Lint script not available, skipping..."
-        fi
+        npm run lint || echo "Linting completed with warnings"
       continue-on-error: true
 
   trigger-jenkins:
@@ -74,58 +68,11 @@ jobs:
     steps:
     - name: Trigger Jenkins Job
       run: |
-        # Check if Jenkins secrets are configured
-        if [ -z "${{ secrets.JENKINS_URL }}" ] || [ -z "${{ secrets.JENKINS_USER }}" ] || [ -z "${{ secrets.JENKINS_TOKEN }}" ]; then
-          echo "❌ ERROR: Jenkins secrets not configured!"
-          echo "Required secrets: JENKINS_URL, JENKINS_USER, JENKINS_TOKEN"
-          echo "Please configure these secrets in your GitHub repository settings."
-          exit 1
-        fi
-
-        # Try to trigger Jenkins job with proper error handling
-        echo "🚀 Triggering Jenkins job at ${{ secrets.JENKINS_URL }}"
-
-        # Get CSRF crumb for authentication
-        echo "🔐 Getting CSRF crumb..."
-        CRUMB=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
-          "${{ secrets.JENKINS_URL }}/crumbIssuer/api/json" | \
-          python3 -c "import sys, json; print(json.load(sys.stdin)['crumb'])" 2>/dev/null || echo "")
-
-        # Set common curl options
-        CURL_OPTS="-u ${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }} --fail --show-error"
-
-        if [ -n "$CRUMB" ]; then
-          echo "✅ CSRF crumb obtained, triggering job with authentication..."
-          RESPONSE=$(curl -X POST $CURL_OPTS \
-            -H "Jenkins-Crumb: $CRUMB" \
-            "${{ secrets.JENKINS_URL }}/job/campusconnect-pipeline/build" \
-            --data-urlencode "token=github-trigger" \
-            --data-urlencode "cause=GitHub commit by ${{ github.actor }}" \
-            -w "%{http_code}" -o /tmp/jenkins_response.txt)
-
-          if [ "$RESPONSE" = "201" ] || [ "$RESPONSE" = "200" ]; then
-            echo "✅ Jenkins job triggered successfully! (HTTP $RESPONSE)"
-          else
-            echo "❌ Jenkins trigger failed with HTTP code: $RESPONSE"
-            cat /tmp/jenkins_response.txt
-            exit 1
-          fi
-        else
-          echo "⚠️  No CSRF crumb available, trying direct authentication..."
-          RESPONSE=$(curl -X POST $CURL_OPTS \
-            "${{ secrets.JENKINS_URL }}/job/campusconnect-pipeline/build" \
-            --data-urlencode "token=github-trigger" \
-            --data-urlencode "cause=GitHub commit by ${{ github.actor }}" \
-            -w "%{http_code}" -o /tmp/jenkins_response.txt)
-
-          if [ "$RESPONSE" = "201" ] || [ "$RESPONSE" = "200" ]; then
-            echo "✅ Jenkins job triggered successfully! (HTTP $RESPONSE)"
-          else
-            echo "❌ Jenkins trigger failed with HTTP code: $RESPONSE"
-            cat /tmp/jenkins_response.txt
-            exit 1
-          fi
-        fi
+        curl -X POST \
+          -u ${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }} \
+          "${{ secrets.JENKINS_URL }}/job/campusconnect-pipeline/build" \
+          --data-urlencode "token=github-trigger" \
+          --data-urlencode "cause=GitHub commit by ${{ github.actor }}"
 
   build-and-deploy:
     name: Build and Deploy to GKE
