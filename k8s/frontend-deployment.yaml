@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: gcr.io/devops-cc-472518/campusconnect-frontend:latest
+        image: asia-south1-docker.pkg.dev/devops-cc-472518/campusconnect-repo/campusconnect-frontend:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 3000

@@ -124,8 +124,8 @@ jobs:
 
     - name: Update Kubernetes Manifests
       run: |
-        sed -i "s|campusconnect-frontend:latest|$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$FRONTEND_IMAGE:$GITHUB_SHA|g" k8s/frontend-deployment.yaml
-        sed -i "s|campusconnect-backend:latest|$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$BACKEND_IMAGE:$GITHUB_SHA|g" k8s/backend-deployment.yaml
+        sed -i "s|asia-south1-docker.pkg.dev/devops-cc-472518/campusconnect-repo/campusconnect-frontend:latest|$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$FRONTEND_IMAGE:$GITHUB_SHA|g" k8s/frontend-deployment.yaml
+        sed -i "s|asia-south1-docker.pkg.dev/devops-cc-472518/campusconnect-repo/campusconnect-backend:latest|$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$BACKEND_IMAGE:$GITHUB_SHA|g" k8s/backend-deployment.yaml
 
     - name: Deploy to GKE
       run: |
@@ -134,8 +134,8 @@ jobs:
         kubectl apply -f k8s/frontend-deployment.yaml
 
         # Wait for rollout to complete
-        kubectl rollout status deployment/backend --timeout=300s
-        kubectl rollout status deployment/frontend --timeout=300s
+        kubectl rollout status deployment/backend --timeout=600s
+        kubectl rollout status deployment/frontend --timeout=600s
       env:
         USE_GKE_GCLOUD_AUTH_PLUGIN: True
 
