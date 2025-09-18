@@ -11,7 +11,12 @@ const eventRoutes = require('./services/ClubHome');
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:30000', 'http://localhost:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // MongoDB Connection
@@ -19,6 +24,11 @@ const mongoURI = 'mongodb+srv://druthi:druthi%402004@devops-cc.w5sl0nw.mongodb.n
 mongoose.connect(mongoURI)
   .then(() => console.log('Connected to MongoDB'))
   .catch(err => console.error('MongoDB connection error:', err));
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'Server is running' });
+});
 
 // Routes
 app.use('/api/students', studentRoutes);
@@ -29,7 +39,10 @@ app.use('/api/events', eventRoutes);
 
 
 // Start server
-const PORT = 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const PORT = process.env.PORT || 5000;
+const HOST = process.env.HOST || 'localhost';
+
+app.listen(PORT, HOST, () => {
+  console.log(`Server running on ${HOST}:${PORT}`);
+  console.log('CORS enabled for:', process.env.CORS_ORIGIN || 'http://localhost:3000');
 });

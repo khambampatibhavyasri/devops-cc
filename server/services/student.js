@@ -13,6 +13,16 @@ const studentSchema = new mongoose.Schema({
 
 const Student = mongoose.model('Student', studentSchema);
 
+// Get all students
+router.get('/', async (req, res) => {
+  try {
+    const students = await Student.find().select('-password');
+    res.json(students);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching students' });
+  }
+});
+
 // Student Signup
 router.post('/signup', async (req, res) => {
   try {

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { jwtDecode } from 'jwt-decode';
-import { 
+import {
   Avatar,
   Menu,
   MenuItem,
@@ -11,6 +11,7 @@ import {
   Typography,
   CircularProgress
 } from '@mui/material';
+import API_BASE_URL from '../config/api';
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -57,23 +58,13 @@ const Navbar = () => {
     setAnchorEl(null);
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     handleMenuClose();
-    try {
-      await axios.post('http://localhost:5000/api/auth/logout', {}, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      localStorage.removeItem('token');
-      setIsLoggedIn(false);
-      setUserInitial('');
-      navigate('/login');
-      window.location.reload(); // Force refresh to reset all states
-    }
+    localStorage.removeItem('token');
+    setIsLoggedIn(false);
+    setUserInitial('');
+    navigate('/login');
+    window.location.reload(); // Force refresh to reset all states
   };
 
   const handleProfileClick = () => {

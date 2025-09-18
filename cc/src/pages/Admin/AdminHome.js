@@ -23,6 +23,7 @@ import {
   Alert
 } from "@mui/material";
 import axios from "axios";
+import API_BASE_URL from "../../config/api";
 import { format } from "date-fns";
 
 const AdminHome = () => {
@@ -35,7 +36,6 @@ const AdminHome = () => {
   const [currentItem, setCurrentItem] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  const API_BASE_URL = "http://localhost:5000/api";
 
   const fetchData = async () => {
     try {

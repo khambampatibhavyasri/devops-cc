@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   Container,
   Typography,
   Card,
@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 import { format } from 'date-fns';
+import API_BASE_URL from '../../config/api';
 
 const AllEventsPage = () => {
   const [events, setEvents] = useState([]);
@@ -41,7 +42,7 @@ const AllEventsPage = () => {
   useEffect(() => {
     const fetchEvents = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/events/all');
+        const response = await axios.get(`${API_BASE_URL}/events/all`);
         setEvents(response.data);
         
         // Initialize purchase counts
@@ -89,7 +90,7 @@ const AllEventsPage = () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.post(
-        `http://localhost:5000/api/events/${purchaseDialog.event._id}/purchase`,
+        `${API_BASE_URL}/events/${purchaseDialog.event._id}/purchase`,
         { quantity: purchaseDialog.quantity },
         {
           headers: { Authorization: `Bearer ${token}` }
